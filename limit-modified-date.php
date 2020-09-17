@@ -48,6 +48,7 @@ class Limit_Modified_Date {
 
 		// Checkbox in block editor.
 		add_action( 'init', [ $this, 'register_post_meta' ] );
+		add_action( 'wp_loaded', [ $this, 'wp_loaded' ] );
 		add_action( 'enqueue_block_editor_assets', [ $this, 'enqueue_block_editor_assets' ] );
 
 		// Checkbox in classic editor.
@@ -55,7 +56,6 @@ class Limit_Modified_Date {
 		add_action( 'save_post', [ $this, 'save_post' ] );
 
 	}
-
 	/**
 	 * Use original modified date
 	 *
@@ -103,6 +103,15 @@ class Limit_Modified_Date {
 	}
 
 	/**
+	 * Hook into the REST API to save post meta once all post types are registered.
+	 */
+	public function wp_loaded() {
+		foreach ( self::supported_post_types() as $post_type ) {
+			add_filter( "rest_pre_insert_{$post_type}", [ $this, 'save_rest_post_meta' ], 10, 2 );
+		}
+	}
+
+	/**
 	 * Enqueues JavaScript and CSS for the block editor.
 	 */
 	public function enqueue_block_editor_assets() {
@@ -135,14 +144,67 @@ class Limit_Modified_Date {
 	}
 
 	/**
+	 * Save plugin post meta before a post before is inserted via the REST API.
+	 *
+	 * This filter intercepts any plugin post meta included with the REST
+	 * request and independently saves it prior to the REST API saving the
+	 * underlying post so that the meta values are in place for use during the
+	 * 'wp_insert_post_data' filter. It is, currently, the only hook
+	 * conveniently timed for this purpose.
+	 *
+	 * @param stdClass        $prepared_post A post prepared for inserting or updating the database.
+	 * @param WP_REST_Request $request       Request object.
+	 * @return stdClass The unmodified prepared post.
+	 */
+	public function save_rest_post_meta( $prepared_post, $request ) {
+		if ( empty( $prepared_post->ID ) ) {
+			return $prepared_post;
+		}
+
+		$meta    = $request['meta'];
+		$mutated = false;
+
+		if ( ! $meta || ! is_array( $meta ) ) {
+			return $prepared_post;
+		}
+
+		if ( isset( $meta[ $this->meta_key ] ) ) {
+			update_post_meta( $prepared_post->ID, $this->meta_key, $meta[ $this->meta_key ] );
+			unset( $meta[ $this->meta_key ] );
+			$mutated = true;
+		}
+
+		if ( isset( $meta[ $this->last_mod_meta_key ] ) ) {
+			update_post_meta( $prepared_post->ID, $this->last_mod_meta_key, $meta[ $this->last_mod_meta_key ] );
+			unset( $meta[ $this->last_mod_meta_key ] );
+			$mutated = true;
+		}
+
+		// Remove the meta from the original request object so that the REST API doesn't attempt to save it again.
+		if ( $mutated ) {
+			$request['meta'] = $meta;
+		}
+
+		return $prepared_post;
+	}
+
+	/**
+	 * Get the post types supporting limiting the modified date.
+	 *
+	 * @return string[] Post types.
+	 */
+	public static function supported_post_types(): array {
+		return (array) apply_filters( 'limit_modified_date_post_types', [ 'post' ] );
+	}
+
+	/**
 	 * Determine whether a post type supports limiting the modified date.
 	 *
 	 * @param string $type The post type to check.
 	 * @return bool Whether this post type supports limiting the modified date.
 	 */
 	public static function is_supported_post_type( $type ) {
-		$supported_post_types = (array) apply_filters( 'limit_modified_date_post_types', [ 'post' ] );
-		return in_array( $type, $supported_post_types, true );
+		return in_array( $type, self::supported_post_types(), true );
 	}
 
 	/**
