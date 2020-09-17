@@ -64,6 +64,28 @@ class Limit_Modified_Date {
 	 * @return array Slashed post data with modified post_modified and post_modified_gmt
 	 */
 	public function use_original_modified_date( $data, $postarr ) {
+		/**
+		 * Filters whether to use the original modified date.
+		 *
+		 * Returning a truthy value to this filter will short-circuit this
+		 * function and cause the post's new modified date to be saved.
+		 *
+		 * @param mixed|null $pre Whether to preempt the use of the original modified date.
+		 * @param int        $ID  The post ID.
+		 */
+		$pre = apply_filters( 'limit_modified_date_pre_use_original_modified_date', null, $postarr['ID'] );
+
+		if ( $pre ) {
+			/*
+			 * Preempting has the effect of unchecking the checkbox in the block
+			 * editor before saving the post. Here we make sure the
+			 * last-modified meta is updated as it would be when the box is
+			 * actually unchecked.
+			 */
+			update_post_meta( $postarr['ID'], $this->last_mod_meta_key, mysql_to_rfc3339( $data['post_modified'] ) );
+
+			return $data;
+		}
 
 		// Block editor uses post meta.
 		$use_original  = get_post_meta( $postarr['ID'], $this->meta_key, true );
