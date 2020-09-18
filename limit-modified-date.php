@@ -54,8 +54,8 @@ class Limit_Modified_Date {
 		// Checkbox in classic editor.
 		add_action( 'post_submitbox_misc_actions', [ $this, 'classic_editor_checkbox' ] );
 		add_action( 'save_post', [ $this, 'save_post' ] );
-
 	}
+
 	/**
 	 * Use original modified date
 	 *
